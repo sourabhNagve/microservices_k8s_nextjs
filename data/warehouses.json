@@ -1,0 +1,26 @@
+[
+  {
+    "id": "wh-1",
+    "name": "Main Warehouse",
+    "location": "123 Storage St, City, State 12345",
+    "capacity": 5000,
+    "manager": "John Smith",
+    "is_active": true
+  },
+  {
+    "id": "wh-2",
+    "name": "East Coast Facility",
+    "location": "456 Logistics Ave, New York, NY 10001",
+    "capacity": 3000,
+    "manager": "Sarah Johnson",
+    "is_active": true
+  },
+  {
+    "id": "wh-3",
+    "name": "West Coast Hub",
+    "location": "789 Supply Rd, Los Angeles, CA 90001",
+    "capacity": 4000,
+    "manager": "Mike Wilson",
+    "is_active": true
+  }
+]

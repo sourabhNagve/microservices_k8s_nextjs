@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1773560006186,
+      "tag": "0000_easy_sheva_callister",
+      "breakpoints": true
+    }
+  ]
+}

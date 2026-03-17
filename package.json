@@ -1,0 +1,39 @@
+{
+  "name": "microservices-ecommerce",
+  "version": "1.0.0",
+  "description": "E-commerce platform with microservices architecture",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:auth\" \"npm run dev:product\" \"npm run dev:cart\" \"npm run dev:inventory\" \"npm run dev:order\" \"npm run dev:payment\" \"npm run dev:notification\" \"npm run dev:frontend\"",
+    "dev:auth": "cd auth-service && npm run dev",
+    "dev:product": "cd product-service && npm run dev",
+    "dev:cart": "cd cart-service && npm run dev",
+    "dev:inventory": "cd inventory-service && npm run dev",
+    "dev:order": "cd order-service && npm run dev",
+    "dev:payment": "cd payment-service && npm run dev",
+    "dev:notification": "cd notification-service && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "seed": "node seed-all.js",
+    "seed:auth": "cd auth-service && npm run seed",
+    "seed:product": "cd product-service && npm run seed",
+    "seed:inventory": "cd inventory-service && npm run seed",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up",
+    "docker:down": "docker-compose down",
+    "docker:dev": "docker-compose up --build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "microservices",
+    "ecommerce",
+    "nodejs",
+    "docker"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "node-fetch": "^3.3.2"
+  }
+}
