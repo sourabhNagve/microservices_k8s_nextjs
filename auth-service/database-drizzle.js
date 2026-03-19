@@ -18,8 +18,6 @@ export const db = drizzle(pool, { schema });
 export const connectDB = async () => {
   try {
     console.log('🔄 Attempting to connect to database...');
-    console.log('🔄 Full URL being used:', process.env.AUTH_DATABASE_URL); // add this
-
     console.log('📍 Database URL:', process.env.AUTH_DATABASE_URL ? 'Set' : 'Not set');
     
     const client = await pool.connect();

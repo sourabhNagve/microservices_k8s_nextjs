@@ -116,6 +116,7 @@ services:
     environment:
       CART_SERVICE_PORT: ${CART_SERVICE_PORT}
       REDIS_URL: ${REDIS_URL}
+      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL}
       NODE_ENV: ${NODE_ENV}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     volumes:
@@ -160,6 +161,7 @@ services:
       - .env
     environment:
       PAYMENT_SERVICE_PORT: ${PAYMENT_SERVICE_PORT}
+      PAYMENT_DATABASE_URL: ${PAYMENT_DATABASE_URL}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       NODE_ENV: ${NODE_ENV}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
@@ -168,6 +170,8 @@ services:
       - /app/node_modules
     networks:
       - microservices-network
+    depends_on:
+      - redis
 
   # Notification Service
   notification-service:
@@ -202,7 +206,7 @@ services:
       - .env
     environment:
       NODE_ENV: ${NODE_ENV}
-      NEXT_PUBLIC_API_URL: ${AUTH_SERVICE_URL}
+      NEXT_PUBLIC_AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
       NEXT_PUBLIC_PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL}
       NEXT_PUBLIC_CART_SERVICE_URL: ${CART_SERVICE_URL}
       NEXT_PUBLIC_INVENTORY_SERVICE_URL: ${INVENTORY_SERVICE_URL}

@@ -278,10 +278,21 @@ export class User {
         .offset(offset)
         .orderBy(users.createdAt);
 
-      // Get total count for pagination
-      const [{ count }] = await db
+      // Get total count for pagination — apply the same search filter
+      const countQuery = db
         .select({ count: sql`count(*)`.mapWith(Number) })
         .from(users);
+
+      const filteredCountQuery = search
+        ? countQuery.where(
+            or(
+              ilike(users.name, `%${search}%`),
+              ilike(users.email, `%${search}%`)
+            )
+          )
+        : countQuery;
+
+      const [{ count }] = await filteredCountQuery;
       const total = count;
 
       return {

@@ -376,13 +376,13 @@ class Order {
     let queryParams = [userId];
 
     if (startDate) {
-      whereClause += ' AND created_at >= $2';
       queryParams.push(startDate);
+      whereClause += ` AND created_at >= $${queryParams.length}`;
     }
 
     if (endDate) {
-      whereClause += ' AND created_at <= $3';
       queryParams.push(endDate);
+      whereClause += ` AND created_at <= $${queryParams.length}`;
     }
 
     const statsQuery = `

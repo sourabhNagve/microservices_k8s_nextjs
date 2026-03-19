@@ -1,8 +1,12 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 
-if (!process.env.GOOGLE_CLIENT_SECRET) {
-  throw new Error('Missing Google OAuth credentials in environment variables');
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  const missing = [
+    !process.env.GOOGLE_CLIENT_ID     && 'GOOGLE_CLIENT_ID',
+    !process.env.GOOGLE_CLIENT_SECRET && 'GOOGLE_CLIENT_SECRET',
+  ].filter(Boolean).join(', ');
+  throw new Error(`Missing required environment variable(s): ${missing}`);
 }
 
 export const authOptions = {
