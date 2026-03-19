@@ -160,6 +160,7 @@ services:
       - .env
     environment:
       PAYMENT_SERVICE_PORT: ${PAYMENT_SERVICE_PORT}
+      PAYMENT_DATABASE_URL: ${PAYMENT_DATABASE_URL}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       NODE_ENV: ${NODE_ENV}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
@@ -168,6 +169,8 @@ services:
       - /app/node_modules
     networks:
       - microservices-network
+    depends_on:
+      - redis
 
   # Notification Service
   notification-service:
