@@ -13,7 +13,7 @@ import AuthenticatedLink from '@/components/AuthenticatedLink';
 import AddToCartButton from '@/components/AddToCartButton';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const PRODUCT_API = 'http://localhost:3003/api/products';
+const PRODUCT_API = `${process.env.NEXT_PUBLIC_PRODUCT_SERVICE_URL}/api/products`;
 
 const NAV_LINKS = [
   { href: '/',         label: 'Home' },
@@ -208,10 +208,10 @@ export default function ProductsPage() {
 
   const clearFilters = useCallback(() => setFilters(DEFAULT_FILTERS), []);
 
-  const hasActiveFilters =
-    filters.search !== '' ||
-    filters.category !== 'all' ||
-    filters.sort !== 'name';
+// ✅ line 211 — sort is not a filter, don't treat it as one
+const hasActiveFilters =
+  filters.search !== '' ||
+  filters.category !== 'all';
 
   const inCartCount = useMemo(
     () => displayedProducts.filter((item) => isProductInCart(normalise(item).id)).length,

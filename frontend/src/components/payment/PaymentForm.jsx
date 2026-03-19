@@ -50,7 +50,7 @@ export default function PaymentForm({ onSubmit, amount = 0 }) {
     try {
       const amountInCents = Math.round(amount * 100);
 
-      const response = await fetch(`${PAYMENT_API}/payment-intent`, {
+      const response = await fetch(`${PAYMENT_API}/api/payments/payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

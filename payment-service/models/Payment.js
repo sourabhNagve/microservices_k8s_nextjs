@@ -1,5 +1,4 @@
 import { query } from '../database.js';
-import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
 class Payment {
@@ -29,7 +28,6 @@ class Payment {
       CREATE INDEX IF NOT EXISTS idx_payments_provider ON payments(provider);
       CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at);
     `;
-
     try {
       await query(createTableQuery);
       console.log('✅ Payments table created/verified');
@@ -62,7 +60,6 @@ class Payment {
       CREATE INDEX IF NOT EXISTS idx_payment_methods_user_id ON payment_methods(user_id);
       CREATE INDEX IF NOT EXISTS idx_payment_methods_is_default ON payment_methods(is_default);
     `;
-
     try {
       await query(createTableQuery);
       console.log('✅ Payment methods table created/verified');
@@ -72,7 +69,7 @@ class Payment {
     }
   }
 
-  // Create new payment
+  // ✅ Fixed — now includes status and processedAt in INSERT
   static async create(paymentData) {
     const {
       orderId,
@@ -82,19 +79,28 @@ class Payment {
       amount,
       currency = 'USD',
       gatewayResponse,
-      providerTransactionId
+      providerTransactionId,
+      status = 'pending',  // ✅ added
+      processedAt = null,       // ✅ added
     } = paymentData;
 
     const insertQuery = `
-      INSERT INTO payments (order_id, user_id, payment_method, provider, provider_transaction_id, amount, currency, gateway_response)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO payments (
+        order_id, user_id, payment_method, provider,
+        provider_transaction_id, amount, currency,
+        gateway_response, status, processed_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
     try {
       const result = await query(insertQuery, [
-        orderId, userId, paymentMethod, provider, providerTransactionId, 
-        amount, currency, JSON.stringify(gatewayResponse)
+        orderId, userId, paymentMethod, provider,
+        providerTransactionId, amount, currency,
+        JSON.stringify(gatewayResponse),
+        status,       // ✅ added
+        processedAt,  // ✅ added
       ]);
       return result.rows[0];
     } catch (error) {
@@ -103,16 +109,9 @@ class Payment {
     }
   }
 
-  // Get payment by ID
+  // ✅ Fixed — removed JOIN with orders/users (different databases)
   static async findById(paymentId) {
-    const selectQuery = `
-      SELECT p.*, o.order_number, u.email as user_email
-      FROM payments p
-      LEFT JOIN orders o ON p.order_id = o.id
-      LEFT JOIN users u ON p.user_id = u.id
-      WHERE p.id = $1
-    `;
-
+    const selectQuery = `SELECT * FROM payments WHERE id = $1`;
     try {
       const result = await query(selectQuery, [paymentId]);
       return result.rows[0] || null;
@@ -122,16 +121,13 @@ class Payment {
     }
   }
 
-  // Get payments by order ID
+  // ✅ Fixed — removed JOIN with users (different database)
   static async findByOrderId(orderId) {
     const selectQuery = `
-      SELECT p.*, u.email as user_email
-      FROM payments p
-      LEFT JOIN users u ON p.user_id = u.id
-      WHERE p.order_id = $1
-      ORDER BY p.created_at DESC
+      SELECT * FROM payments
+      WHERE order_id = $1
+      ORDER BY created_at DESC
     `;
-
     try {
       const result = await query(selectQuery, [orderId]);
       return result.rows;
@@ -141,30 +137,28 @@ class Payment {
     }
   }
 
-  // Get payments by user ID
+  // ✅ Fixed — removed JOIN with orders (different database)
   static async findByUserId(userId, page = 1, limit = 20, status = null) {
-    let offset = (page - 1) * limit;
-    let whereClause = 'WHERE p.user_id = $1';
-    let queryParams = [userId];
+    const offset = (page - 1) * limit;
+    const params = [userId];
+    let where = 'WHERE user_id = $1';
 
     if (status) {
-      whereClause += ' AND p.status = $2';
-      queryParams.push(status);
+      where += ' AND status = $2';
+      params.push(status);
     }
 
+    params.push(limit, offset);
+
     const selectQuery = `
-      SELECT p.*, o.order_number
-      FROM payments p
-      LEFT JOIN orders o ON p.order_id = o.id
-      ${whereClause}
-      ORDER BY p.created_at DESC
-      LIMIT $3 OFFSET $4
+      SELECT * FROM payments
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
     `;
 
-    queryParams.push(limit, offset);
-
     try {
-      const result = await query(selectQuery, queryParams);
+      const result = await query(selectQuery, params);
       return result.rows;
     } catch (error) {
       console.error('❌ Error finding payments by user:', error);
@@ -172,13 +166,10 @@ class Payment {
     }
   }
 
-  // Update payment status
   static async updateStatus(paymentId, status, additionalData = {}) {
     const fields = ['status'];
     const values = [status];
-    let paramIndex = 2;
 
-    // Add additional fields
     if (status === 'completed' && additionalData.processedAt) {
       fields.push('processed_at');
       values.push(additionalData.processedAt);
@@ -190,7 +181,7 @@ class Payment {
     }
 
     const updateQuery = `
-      UPDATE payments 
+      UPDATE payments
       SET ${fields.map((field, index) => `${field} = $${index + 1}`).join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
@@ -207,20 +198,18 @@ class Payment {
     }
   }
 
-  // Process refund
   static async processRefund(paymentId, refundAmount, reason = 'Customer requested refund') {
     const updateQuery = `
-      UPDATE payments 
-      SET status = 'refunded', 
-          updated_at = CURRENT_TIMESTAMP
+      UPDATE payments
+      SET status = 'refunded', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND status = 'completed'
       RETURNING *
     `;
 
     try {
       const result = await query(updateQuery, [paymentId]);
-      
-      // Create refund record
+      if (!result.rows[0]) return null;
+
       await this.create({
         orderId: result.rows[0].order_id,
         userId: result.rows[0].user_id,
@@ -228,11 +217,11 @@ class Payment {
         provider: 'system',
         amount: -Math.abs(refundAmount),
         currency: result.rows[0].currency,
-        gatewayResponse: JSON.stringify({
+        gatewayResponse: {
           originalPaymentId: paymentId,
-          refundAmount: refundAmount,
-          reason: reason
-        })
+          refundAmount,
+          reason,
+        },
       });
 
       return result.rows[0];
@@ -242,35 +231,32 @@ class Payment {
     }
   }
 
-  // Save payment method
   static async savePaymentMethod(userId, methodData) {
     const {
-      methodType,
-      provider,
-      providerMethodId,
-      isDefault = false,
-      cardLast4,
-      cardBrand,
-      cardExpiryMonth,
-      cardExpiryYear,
-      billingEmail
+      methodType, provider, providerMethodId,
+      isDefault = false, cardLast4, cardBrand,
+      cardExpiryMonth, cardExpiryYear, billingEmail,
     } = methodData;
 
-    // If setting as default, unset other defaults
     if (isDefault) {
       await query('UPDATE payment_methods SET is_default = FALSE WHERE user_id = $1', [userId]);
     }
 
     const insertQuery = `
-      INSERT INTO payment_methods (user_id, method_type, provider, provider_method_id, is_default, card_last4, card_brand, card_expiry_month, card_expiry_year, billing_email)
+      INSERT INTO payment_methods (
+        user_id, method_type, provider, provider_method_id,
+        is_default, card_last4, card_brand,
+        card_expiry_month, card_expiry_year, billing_email
+      )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
     try {
       const result = await query(insertQuery, [
-        userId, methodType, provider, providerMethodId, isDefault,
-        cardLast4, cardBrand, cardExpiryMonth, cardExpiryYear, billingEmail
+        userId, methodType, provider, providerMethodId,
+        isDefault, cardLast4, cardBrand,
+        cardExpiryMonth, cardExpiryYear, billingEmail,
       ]);
       return result.rows[0];
     } catch (error) {
@@ -279,14 +265,12 @@ class Payment {
     }
   }
 
-  // Get user payment methods
   static async getUserPaymentMethods(userId) {
     const selectQuery = `
-      SELECT * FROM payment_methods 
+      SELECT * FROM payment_methods
       WHERE user_id = $1 AND is_active = TRUE
       ORDER BY is_default DESC, created_at DESC
     `;
-
     try {
       const result = await query(selectQuery, [userId]);
       return result.rows;
@@ -296,7 +280,16 @@ class Payment {
     }
   }
 
-  // Generate payment signature for webhooks
+  static async findAll(page = 1, limit = 20) {
+    const offset = (page - 1) * limit;
+    const result = await query(`SELECT * FROM payments ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    const countResult = await query(`SELECT COUNT(*) FROM payments`);
+    return {
+      payments: result.rows,
+      total: parseInt(countResult.rows[0].count),
+    };
+  }
+
   static generateSignature(payload, secret) {
     return crypto
       .createHmac('sha256', JSON.stringify(payload))
@@ -304,7 +297,6 @@ class Payment {
       .digest('hex');
   }
 
-  // Verify webhook signature
   static verifyWebhookSignature(payload, signature, secret) {
     const expectedSignature = this.generateSignature(payload, secret);
     return crypto.timingSafeEqual(signature, expectedSignature);

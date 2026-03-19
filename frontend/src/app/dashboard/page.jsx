@@ -113,13 +113,18 @@ export default function Dashboard() {
   if (loading) return <LoadingScreen />;
   if (!user)   return <AccessDenied />; // shown briefly while redirect fires
 
-  const displayName = user.name || user.firstName || user.email;
-  const initials    = displayName
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
+// ✅ line 107 — guard against all three fields being undefined
+const displayName = user.name ?? user.firstName ?? user.email ?? 'User';
 
+// ✅ line 108 — guard against displayName being an email (no spaces)
+// and against any word being an empty string
+const initials = displayName
+  .split(/\s+/)           // split on any whitespace, not just single space
+  .filter(Boolean)        // remove empty strings
+  .slice(0, 2)
+  .map((w) => w[0]?.toUpperCase() ?? '')
+  .join('') || '?';       // fallback if initials ends up empty
+  
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

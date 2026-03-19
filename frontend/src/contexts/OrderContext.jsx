@@ -4,10 +4,9 @@ import {
   createContext, useContext, useReducer, useCallback, useRef, useMemo,
 } from 'react';
 import { useToast } from '@/components/Toast';
-import { getToken } from '@/lib/auth'; // ✅ use exported getToken — reads correct key 'auth_token'
+import { getToken } from '@/lib/auth';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// ✅ env var instead of hardcoded URL
 const ORDER_API   = process.env.NEXT_PUBLIC_ORDER_SERVICE_URL;
 const THROTTLE_MS = 5000;
 const UUID_REGEX  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,7 +19,6 @@ const toConsistentUUID = (id) => {
 };
 
 const apiFetch = async (url, options = {}) => {
-  // ✅ uses exported getToken() which reads 'auth_token' — correct key
   const token = getToken();
   const res = await fetch(url, {
     ...options,
@@ -49,7 +47,12 @@ const apiFetch = async (url, options = {}) => {
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 const initialState = {
-  orders: [], currentOrder: null, loading: false, error: null, orderStats: null,
+  orders:       [],
+  total:        0,
+  currentOrder: null,
+  loading:      false,
+  error:        null,
+  orderStats:   null,
 };
 
 const ACTIONS = {
@@ -65,19 +68,50 @@ const ACTIONS = {
 
 const orderReducer = (state, { type, payload }) => {
   switch (type) {
-    case ACTIONS.SET_LOADING:       return { ...state, loading: payload };
-    case ACTIONS.SET_ERROR:         return { ...state, error: payload, loading: false };
-    case ACTIONS.CLEAR_ERROR:       return { ...state, error: null };
-    case ACTIONS.SET_ORDERS:        return { ...state, orders: payload, loading: false, error: null };
-    case ACTIONS.SET_CURRENT_ORDER: return { ...state, currentOrder: payload, loading: false, error: null };
-    case ACTIONS.ADD_ORDER:         return { ...state, orders: [payload, ...state.orders], loading: false, error: null };
-    case ACTIONS.UPDATE_ORDER:      return {
-      ...state, loading: false, error: null,
-      orders: state.orders.map((o) => (o.id === payload.id ? payload : o)),
-      currentOrder: state.currentOrder?.id === payload.id ? payload : state.currentOrder,
-    };
-    case ACTIONS.SET_ORDER_STATS:   return { ...state, orderStats: payload, loading: false, error: null };
-    default:                        return state;
+    case ACTIONS.SET_LOADING:
+      return { ...state, loading: payload };
+
+    case ACTIONS.SET_ERROR:
+      return { ...state, error: payload, loading: false };
+
+    case ACTIONS.CLEAR_ERROR:
+      return { ...state, error: null };
+
+    case ACTIONS.SET_ORDERS:
+      return {
+        ...state,
+        orders:  payload.orders,
+        total:   payload.total,
+        loading: false,
+        error:   null,
+      };
+
+    case ACTIONS.SET_CURRENT_ORDER:
+      return { ...state, currentOrder: payload, loading: false, error: null };
+
+    case ACTIONS.ADD_ORDER:
+      return {
+        ...state,
+        orders:  [payload, ...state.orders],
+        total:   state.total + 1,
+        loading: false,
+        error:   null,
+      };
+
+    case ACTIONS.UPDATE_ORDER:
+      return {
+        ...state,
+        loading:      false,
+        error:        null,
+        orders:       state.orders.map((o) => (o.id === payload.id ? payload : o)),
+        currentOrder: state.currentOrder?.id === payload.id ? payload : state.currentOrder,
+      };
+
+    case ACTIONS.SET_ORDER_STATS:
+      return { ...state, orderStats: payload, loading: false, error: null };
+
+    default:
+      return state;
   }
 };
 
@@ -110,7 +144,10 @@ export function OrderProvider({ children }) {
 
   const fetchOrders = useCallback(async (userId, page = 1, limit = 20, status = null) => {
     const uid = toConsistentUUID(userId);
-    if (!uid) { dispatch({ type: ACTIONS.SET_ORDERS, payload: [] }); return; }
+    if (!uid) {
+      dispatch({ type: ACTIONS.SET_ORDERS, payload: { orders: [], total: 0 } });
+      return;
+    }
 
     const key = `orders-${uid}-${page}-${limit}-${status ?? 'all'}`;
     if (isThrottled(key)) return;
@@ -120,8 +157,14 @@ export function OrderProvider({ children }) {
       const params = new URLSearchParams({
         page: String(page), limit: String(limit), ...(status ? { status } : {}),
       });
-      const data = await apiFetch(`${ORDER_API}/user/${uid}?${params}`);
-      dispatch({ type: ACTIONS.SET_ORDERS, payload: data.orders ?? [] });
+      const data = await apiFetch(`${ORDER_API}/api/orders/user/${uid}?${params}`);
+      dispatch({
+        type:    ACTIONS.SET_ORDERS,
+        payload: {
+          orders: data.orders ?? [],
+          total:  data.total ?? data.orders?.length ?? 0,
+        },
+      });
     } catch (err) {
       console.error('[OrderContext] fetchOrders:', err);
       if (err.status === 429) {
@@ -130,7 +173,7 @@ export function OrderProvider({ children }) {
         return;
       }
       if (err.status === 422 || err.message?.includes('Validation')) {
-        dispatch({ type: ACTIONS.SET_ORDERS, payload: [] });
+        dispatch({ type: ACTIONS.SET_ORDERS, payload: { orders: [], total: 0 } });
         return;
       }
       dispatch({ type: ACTIONS.SET_ERROR, payload: err.message });
@@ -138,10 +181,11 @@ export function OrderProvider({ children }) {
     }
   }, [isThrottled, toast]);
 
+  // ✅ fixed — added /api/orders/
   const fetchOrder = useCallback(async (orderId) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const data = await apiFetch(`${ORDER_API}/${orderId}`);
+      const data = await apiFetch(`${ORDER_API}/api/orders/${orderId}`);
       dispatch({ type: ACTIONS.SET_CURRENT_ORDER, payload: data.order });
     } catch (err) {
       console.error('[OrderContext] fetchOrder:', err);
@@ -150,10 +194,14 @@ export function OrderProvider({ children }) {
     }
   }, [toast]);
 
+  // ✅ fixed — added /api/orders
   const createOrder = useCallback(async (orderData) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const data = await apiFetch(ORDER_API, { method: 'POST', body: JSON.stringify(orderData) });
+      const data = await apiFetch(`${ORDER_API}/api/orders`, {
+        method: 'POST',
+        body:   JSON.stringify(orderData),
+      });
       dispatch({ type: ACTIONS.ADD_ORDER, payload: data.order });
       toast.success('Order created successfully!');
       return { success: true, order: data.order };
@@ -165,12 +213,13 @@ export function OrderProvider({ children }) {
     }
   }, [toast]);
 
+  // ✅ fixed — added /api/orders/
   const updateOrderStatus = useCallback(async (orderId, status, notes = null) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const data = await apiFetch(`${ORDER_API}/${orderId}/status`, {
+      const data = await apiFetch(`${ORDER_API}/api/orders/${orderId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, ...(notes ? { notes } : {}) }),
+        body:   JSON.stringify({ status, ...(notes ? { notes } : {}) }),
       });
       dispatch({ type: ACTIONS.UPDATE_ORDER, payload: data.order });
       toast.success('Order status updated!');
@@ -183,12 +232,13 @@ export function OrderProvider({ children }) {
     }
   }, [toast]);
 
+  // ✅ fixed — added /api/orders/
   const cancelOrder = useCallback(async (orderId, reason = null) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const data = await apiFetch(`${ORDER_API}/${orderId}/cancel`, {
+      const data = await apiFetch(`${ORDER_API}/api/orders/${orderId}/cancel`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...(reason ? { reason } : {}) }),
+        body:   JSON.stringify({ ...(reason ? { reason } : {}) }),
       });
       dispatch({ type: ACTIONS.UPDATE_ORDER, payload: data.order });
       toast.success('Order cancelled.');
@@ -201,12 +251,13 @@ export function OrderProvider({ children }) {
     }
   }, [toast]);
 
+  // ✅ fixed — added /api/orders/
   const addTracking = useCallback(async (orderId, trackingNumber, carrier, estimatedDelivery) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const data = await apiFetch(`${ORDER_API}/${orderId}/tracking`, {
+      const data = await apiFetch(`${ORDER_API}/api/orders/${orderId}/tracking`, {
         method: 'POST',
-        body: JSON.stringify({ trackingNumber, carrier, estimatedDelivery }),
+        body:   JSON.stringify({ trackingNumber, carrier, estimatedDelivery }),
       });
       dispatch({ type: ACTIONS.UPDATE_ORDER, payload: data.order });
       toast.success('Tracking information added!');
@@ -229,7 +280,7 @@ export function OrderProvider({ children }) {
         ...(startDate ? { startDate } : {}),
         ...(endDate   ? { endDate }   : {}),
       });
-      const data = await apiFetch(`${ORDER_API}/user/${uid}/stats?${params}`);
+      const data = await apiFetch(`${ORDER_API}/api/orders/user/${uid}/stats?${params}`);
       dispatch({ type: ACTIONS.SET_ORDER_STATS, payload: data.stats });
     } catch (err) {
       console.error('[OrderContext] fetchOrderStats:', err);
@@ -241,8 +292,12 @@ export function OrderProvider({ children }) {
   const clearError = useCallback(() => dispatch({ type: ACTIONS.CLEAR_ERROR }), []);
 
   const value = useMemo(() => ({
-    orders: state.orders, currentOrder: state.currentOrder,
-    loading: state.loading, error: state.error, orderStats: state.orderStats,
+    orders:       state.orders,
+    total:        state.total,
+    currentOrder: state.currentOrder,
+    loading:      state.loading,
+    error:        state.error,
+    orderStats:   state.orderStats,
     fetchOrders, fetchOrder, createOrder,
     updateOrderStatus, cancelOrder, addTracking,
     fetchOrderStats, clearError,

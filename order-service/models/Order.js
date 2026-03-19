@@ -112,6 +112,36 @@ class Order {
     return method === 'express' ? expressShippingCost : defaultShippingCost;
   }
 
+  static async findAll(page = 1, limit = 20, status = null) {
+    const offset = (page - 1) * limit;
+    const params = [];
+    let where = '';
+
+    if (status) {
+      where = 'WHERE status = $1';
+      params.push(status);
+    }
+
+    params.push(limit, offset);
+
+    const result = await query(`
+    SELECT * FROM orders
+    ${where}
+    ORDER BY created_at DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `, params);
+
+    const countResult = await query(
+      `SELECT COUNT(*) FROM orders ${where}`,
+      status ? [status] : []
+    );
+
+    return {
+      orders: result.rows,
+      total: parseInt(countResult.rows[0].count),
+    };
+  }
+
   // Get order by ID
   static async findById(orderId) {
     const selectQuery = `
@@ -145,13 +175,13 @@ class Order {
   // Get orders by user ID
   static async findByUserId(userId, page = 1, limit = 20, status = null) {
     const offset = (page - 1) * limit;
-    
+
     // Handle different userId formats - if it's not a valid UUID, try to find orders by order_number pattern or return empty
     let whereClause, queryParams;
-    
+
     // Check if userId is a valid UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    
+
     if (typeof userId === 'string' && uuidRegex.test(userId)) {
       // Valid UUID - use exact match
       whereClause = 'WHERE o.user_id = $1';
@@ -161,7 +191,7 @@ class Order {
       console.warn(`⚠️ Invalid UUID format for userId: ${userId}, returning empty orders`);
       return [];
     }
-    
+
     if (status) {
       whereClause += ' AND o.status = $' + (queryParams.length + 1);
       queryParams.push(status);
@@ -210,7 +240,7 @@ class Order {
 
     try {
       const result = await query(updateQuery, [status, orderId]);
-      
+
       if (result.rows.length > 0) {
         // Add to status history
         await this.addStatusHistory(orderId, status, notes);
@@ -239,7 +269,7 @@ class Order {
 
     try {
       const result = await query(updateQuery, [trackingNumber, carrier, estimatedDelivery, orderId]);
-      
+
       if (result.rows.length > 0) {
         await this.addStatusHistory(orderId, 'shipped', `Shipped via ${carrier}. Tracking: ${trackingNumber}`);
         console.log(`✅ Tracking added for order ${orderId}`);
@@ -265,7 +295,7 @@ class Order {
 
     try {
       const result = await query(updateQuery, [orderId]);
-      
+
       if (result.rows.length > 0) {
         await this.addStatusHistory(orderId, 'delivered', notes);
         console.log(`✅ Order ${orderId} marked as delivered`);
@@ -291,7 +321,7 @@ class Order {
 
     try {
       const result = await query(updateQuery, [orderId]);
-      
+
       if (result.rows.length > 0) {
         await this.addStatusHistory(orderId, 'cancelled', reason);
         console.log(`✅ Order ${orderId} cancelled`);

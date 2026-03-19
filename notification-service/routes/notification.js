@@ -1,7 +1,6 @@
-const express = require('express');
-const { Notification } = require('../models/Notification');
-const { validateNotification, validateNotificationTemplate } = require('../utils/validation');
-
+import express from 'express';
+import { Notification } from '../models/Notification.js';
+import { validateNotification, validateNotificationTemplate } from '../utils/validation.js';
 const router = express.Router();
 
 // Get notifications by user

@@ -3,17 +3,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Load root environment file
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 import orderRoutes from './routes/order.js';
 import { connectDB, initTables } from './database.js';
 import { connectRabbitMQ } from './utils/rabbitmq.js';
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.ORDER_SERVICE_PORT || process.env.PORT || 3006;

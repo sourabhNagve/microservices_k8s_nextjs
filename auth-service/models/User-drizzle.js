@@ -1,17 +1,17 @@
 import bcrypt from 'bcryptjs';
 import { db } from '../database-drizzle.js';
 import { users } from './schema.js';
-import { eq, ilike, or } from 'drizzle-orm';
+import { eq, ilike, or, sql } from 'drizzle-orm';
 
 export class User {
   static async create(userData) {
     const { name, email, password, googleId } = userData;
-    
+
     let hashedPassword = null;
     if (password) {
       hashedPassword = await bcrypt.hash(password, 12);
     }
-    
+
     try {
       const [user] = await db.insert(users).values({
         name,
@@ -20,7 +20,7 @@ export class User {
         googleId,
         verified: googleId ? true : false,
       }).returning();
-      
+
       const { password: _, ...userWithoutPassword } = user;
       return userWithoutPassword;
     } catch (error) {
@@ -76,7 +76,7 @@ export class User {
         .from(users)
         .where(eq(users.id, id))
         .limit(1);
-      
+
       return user || null;
     } catch (error) {
       console.error('❌ Error finding user by ID:', error);
@@ -86,7 +86,7 @@ export class User {
 
   static async updateProfile(id, updateData) {
     const { name, avatar, preferences } = updateData;
-    
+
     try {
       const [user] = await db
         .update(users)
@@ -107,7 +107,7 @@ export class User {
           isAdmin: users.isAdmin,
           updatedAt: users.updatedAt,
         });
-      
+
       return user;
     } catch (error) {
       console.error('❌ Error updating user profile:', error);
@@ -116,18 +116,22 @@ export class User {
   }
 
   static async changePassword(id, currentPassword, newPassword) {
-    const user = await this.findById(id);
-    if (!user) {
+    // get user with password directly by id
+    const [userWithPassword] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+
+    if (!userWithPassword) {
       const error = new Error('User not found');
       error.name = 'UserNotFoundError';
       throw error;
     }
 
-    // Get user with password for verification
-    const userWithPassword = await this.findByEmail(user.email);
-    if (!userWithPassword) {
-      const error = new Error('User not found');
-      error.name = 'UserNotFoundError';
+    if (!userWithPassword.password) {
+      const error = new Error('Please use Google OAuth to login');
+      error.name = 'InvalidPasswordError';
       throw error;
     }
 
@@ -139,16 +143,12 @@ export class User {
     }
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 12);
-    
+
     try {
       await db
         .update(users)
-        .set({ 
-          password: hashedNewPassword,
-          updatedAt: new Date(),
-        })
+        .set({ password: hashedNewPassword, updatedAt: new Date() })
         .where(eq(users.id, id));
-      
       return true;
     } catch (error) {
       console.error('❌ Error changing password:', error);
@@ -160,7 +160,7 @@ export class User {
     try {
       const [user] = await db
         .update(users)
-        .set({ 
+        .set({
           googleId,
           updatedAt: new Date(),
         })
@@ -176,7 +176,7 @@ export class User {
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
         });
-      
+
       return user;
     } catch (error) {
       console.error('❌ Error linking Google ID:', error);
@@ -194,7 +194,7 @@ export class User {
         .update(users)
         .set({ updatedAt: new Date() })
         .where(eq(users.id, id));
-      
+
       return true;
     } catch (error) {
       console.error('❌ Error updating last login:', error);
@@ -208,7 +208,7 @@ export class User {
         .update(users)
         .set({ verified: true, updatedAt: new Date() })
         .where(eq(users.email, email));
-      
+
       return true;
     } catch (error) {
       console.error('❌ Error verifying email:', error);
@@ -220,7 +220,7 @@ export class User {
     try {
       const [user] = await db
         .update(users)
-        .set({ 
+        .set({
           preferences,
           updatedAt: new Date(),
         })
@@ -236,7 +236,7 @@ export class User {
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
         });
-      
+
       return user;
     } catch (error) {
       console.error('❌ Error updating preferences:', error);
@@ -247,7 +247,7 @@ export class User {
   static async getAllUsers(page = 1, limit = 10, search = '') {
     try {
       const offset = (page - 1) * limit;
-      
+
       let query = db
         .select({
           id: users.id,
@@ -279,8 +279,10 @@ export class User {
         .orderBy(users.createdAt);
 
       // Get total count for pagination
-      const totalCount = await db.select({ count: users.id }).from(users);
-      const total = totalCount.length;
+      const [{ count }] = await db
+        .select({ count: sql`count(*)`.mapWith(Number) })
+        .from(users);
+      const total = count;
 
       return {
         users: allUsers,
@@ -301,12 +303,12 @@ export class User {
     try {
       await db
         .update(users)
-        .set({ 
+        .set({
           isActive: false,
           updatedAt: new Date(),
         })
         .where(eq(users.id, id));
-      
+
       return true;
     } catch (error) {
       console.error('❌ Error deactivating user:', error);
@@ -318,12 +320,12 @@ export class User {
     try {
       await db
         .update(users)
-        .set({ 
+        .set({
           isActive: true,
           updatedAt: new Date(),
         })
         .where(eq(users.id, id));
-      
+
       return true;
     } catch (error) {
       console.error('❌ Error reactivating user:', error);

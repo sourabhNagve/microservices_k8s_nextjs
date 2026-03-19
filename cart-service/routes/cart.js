@@ -110,16 +110,11 @@ router.put('/update', async (req, res) => {
 // Remove item from cart
 router.delete('/remove', async (req, res) => {
   try {
-    const { error } = validateCartItem(req.body);
-    if (error) {
-      return res.status(400).json({ 
-        error: 'Validation failed', 
-        details: error.details[0].message 
-      });
+   const { userId, productId } = req.body; // ← just destructure directly
+    if (!userId || !productId) {            // ← only check what we actually need
+      return res.status(400).json({ error: 'userId and productId are required' });
     }
 
-    const { userId, productId } = req.body;
-    
     const cartItem = await Cart.removeItem(userId, productId);
     
     if (!cartItem) {

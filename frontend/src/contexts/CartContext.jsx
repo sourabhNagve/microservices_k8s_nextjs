@@ -83,7 +83,7 @@ export const CartProvider = ({ children }) => {
     setError(null);
 
     try {
-      const data = await apiFetch(`${API_BASE}/${userId}`);
+      const data = await apiFetch(`${API_BASE}/api/cart/${userId}`);
       applyCart(data.items ?? []);
     } catch (err) {
       if (err.status === 404) {
@@ -109,7 +109,7 @@ export const CartProvider = ({ children }) => {
     setError(null);
 
     try {
-      await apiFetch(`${API_BASE}/add`, {
+      await apiFetch(`${API_BASE}/api/cart/add`, {
         method: 'POST',
         body: JSON.stringify({ userId: parseInt(userId), productId, quantity }),
       });
@@ -145,7 +145,7 @@ export const CartProvider = ({ children }) => {
     }));
 
     try {
-      const data = await apiFetch(`${API_BASE}/update`, {
+      const data = await apiFetch(`${API_BASE}/api/cart/update`, {
         method: 'PUT',
         body: JSON.stringify({ userId: parseInt(userId), productId, quantity }),
       });
@@ -178,7 +178,7 @@ export const CartProvider = ({ children }) => {
     });
 
     try {
-      await apiFetch(`${API_BASE}/remove`, {
+      await apiFetch(`${API_BASE}/api/cart/remove`, {
         method: 'DELETE',
         body: JSON.stringify({ userId: parseInt(userId), productId }),
       });
@@ -195,7 +195,7 @@ export const CartProvider = ({ children }) => {
     if (!userId) return { success: false, error: 'Not authenticated' };
 
     try {
-      await apiFetch(`${API_BASE}/clear/${userId}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/api/cart/clear/${userId}`, { method: 'DELETE' });
       applyCart([]);
       return { success: true };
     } catch (err) {

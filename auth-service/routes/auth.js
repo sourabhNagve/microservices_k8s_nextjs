@@ -14,14 +14,14 @@ import {
 if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is not defined');
 if (!process.env.GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID is not defined');
 
-// ─── Google client (initialized once, not per-request) ────────────────────────
+// ─── Google client ────────────────────────────────────────────────────────────
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = express.Router();
 
 // ─── Rate limiters ────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 20,
   message: { error: 'Too many attempts, please try again later' },
 });
@@ -34,7 +34,14 @@ const adminLimiter = rateLimit({
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const authHeader = req.headers.authorization;
+
+  // ✅ slice(7) instead of replace('Bearer ', '') — avoids replacing
+  // 'Bearer ' if it somehow appears elsewhere in the token string
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : null;
+
   if (!token) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -56,7 +63,6 @@ const authenticate = (req, res, next) => {
 const requireAdmin = async (req, res, next) => {
   try {
     const currentUser = await User.findById(req.user.userId);
-    // Admin role lives in a dedicated column, not preferences
     if (!currentUser || !currentUser.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
@@ -131,7 +137,6 @@ router.post('/login', authLimiter, async (req, res) => {
 
     await User.updateLastLogin(user.id);
 
-    // Strip password from response — no second DB call needed
     const { password: _pw, ...safeUser } = user;
 
     const token = jwt.sign(
@@ -149,6 +154,7 @@ router.post('/login', authLimiter, async (req, res) => {
         email: safeUser.email,
         avatar: safeUser.avatar,
         verified: safeUser.verified,
+        isAdmin:  safeUser.isAdmin ?? safeUser.is_admin ?? false, // ✅ add fallback
       },
     });
   } catch (error) {
@@ -182,9 +188,7 @@ router.post('/google', authLimiter, async (req, res) => {
 
     if (!user) {
       const existingByEmail = await User.findByEmail(googleUser.email);
-
       if (existingByEmail) {
-        // Link Google ID to existing account instead of creating a duplicate
         user = await User.linkGoogleId(existingByEmail.id, googleUser.id);
       } else {
         user = await User.create({
@@ -212,11 +216,11 @@ router.post('/google', authLimiter, async (req, res) => {
         email: user.email,
         avatar: user.avatar || googleUser.picture,
         verified: user.verified,
+        isAdmin:  user.isAdmin ?? user.is_admin ?? false,
       },
     });
   } catch (error) {
     console.error('Google auth error:', error);
-    // Don't leak error.message to client
     res.status(500).json({ error: 'Google authentication failed' });
   }
 });
@@ -225,9 +229,7 @@ router.post('/google', authLimiter, async (req, res) => {
 router.get('/profile', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
       user: {
@@ -238,6 +240,7 @@ router.get('/profile', authenticate, async (req, res) => {
         emailVerified: user.verified,
         preferences: user.preferences,
         createdAt: user.createdAt,
+        isAdmin:  user.isAdmin ?? user.is_admin ?? false,
       },
     });
   } catch (error) {
@@ -259,7 +262,6 @@ router.put('/profile', authenticate, async (req, res) => {
 
     const { name, avatar, preferences } = req.body;
     const updatedUser = await User.updateProfile(req.user.userId, { name, avatar, preferences });
-
     res.json({ message: 'Profile updated successfully', user: updatedUser });
   } catch (error) {
     console.error('Profile update error:', error);
@@ -279,12 +281,9 @@ router.put('/password', authenticate, async (req, res) => {
     }
 
     const { currentPassword, newPassword } = req.body;
-
     await User.changePassword(req.user.userId, currentPassword, newPassword);
-
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
-    // Catch typed error from User.changePassword for wrong current password
     if (error.name === 'InvalidPasswordError') {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
@@ -297,10 +296,7 @@ router.put('/password', authenticate, async (req, res) => {
 router.get('/preferences', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
+    if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ preferences: user.preferences || {} });
   } catch (error) {
     console.error('Get preferences error:', error);
@@ -317,13 +313,11 @@ router.put('/preferences', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Valid preferences object is required' });
     }
 
-    // Guard against excessively large payloads
     if (JSON.stringify(preferences).length > 10_000) {
       return res.status(400).json({ error: 'Preferences payload is too large' });
     }
 
     const updatedUser = await User.updatePreferences(req.user.userId, preferences);
-
     res.json({
       message: 'Preferences updated successfully',
       preferences: updatedUser.preferences,
@@ -337,8 +331,7 @@ router.put('/preferences', authenticate, async (req, res) => {
 // ─── Logout ───────────────────────────────────────────────────────────────────
 router.post('/logout', authenticate, async (req, res) => {
   try {
-    // TODO: add token to a Redis blacklist here for true stateless invalidation
-    // e.g. await redis.set(`bl:${token}`, '1', 'EX', 7 * 24 * 60 * 60);
+    // TODO: add token to Redis blacklist for true stateless invalidation
     res.json({ message: 'Logout successful' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -350,7 +343,7 @@ router.post('/logout', authenticate, async (req, res) => {
 router.get('/admin/users', adminLimiter, authenticate, requireAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 10, 100); // cap at 100
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
     const search = req.query.search || '';
 
     const result = await User.getAllUsers(page, limit, search);
@@ -368,11 +361,9 @@ router.post('/admin/users/:id/deactivate', adminLimiter, authenticate, requireAd
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
-
     if (userId === req.user.userId) {
       return res.status(400).json({ error: 'Cannot deactivate your own account' });
     }
-
     await User.deactivateUser(userId);
     res.json({ message: 'User deactivated successfully' });
   } catch (error) {
@@ -388,7 +379,6 @@ router.post('/admin/users/:id/reactivate', adminLimiter, authenticate, requireAd
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
-
     await User.reactivateUser(userId);
     res.json({ message: 'User reactivated successfully' });
   } catch (error) {

@@ -33,14 +33,33 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '**',
       },
+        {
+        protocol: 'https',
+        hostname: 'example.com',
+      },
+      // ✅ Add any other image hostnames your products use
+      {
+        protocol: 'https',
+        hostname: '*.amazonaws.com',  // if using S3
+      },
+      {
+        protocol: 'https',
+        hostname: '*.cloudinary.com', // if using Cloudinary
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
+        {
+        protocol: 'https',
+        hostname: '**',  // ✅ allows all https image sources
+      },
+      {
+        protocol: 'http',
+        hostname: '**',  // ✅ allows all http image sources
+      },
     ],
-    domains: [
-      'lh3.googleusercontent.com',
-      'images.unsplash.com',
-      'i.imgur.com',
-      'cdn.pixabay.com',
-      'picsum.photos',
-    ],
+
   },
   experimental: {
     optimizeCss: true,

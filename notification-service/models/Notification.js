@@ -1,5 +1,5 @@
-const { query } = require('../database');
-const { v4: uuidv4 } = require('uuid');
+import { query } from '../database.js';
+import { v4 as uuidv4 } from 'uuid';
 
 class Notification {
   // Create notifications table
@@ -84,7 +84,7 @@ class Notification {
 
     const insertQuery = `
       INSERT INTO notifications (user_id, type, title, message, data, priority, channel, expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
@@ -130,15 +130,10 @@ class Notification {
 
   // Get notification by ID
   static async findById(notificationId) {
-    const selectQuery = `
-      SELECT n.*, u.email as user_email
-      FROM notifications n
-      LEFT JOIN users u ON n.user_id = u.id
-      WHERE n.id = $1
-    `;
+
 
     try {
-      const result = await query(selectQuery, [notificationId]);
+      const result = await query(`SELECT * FROM notifications WHERE id = $1`, [notificationId]);
       return result.rows[0] || null;
     } catch (error) {
       console.error('❌ Error finding notification by ID:', error);

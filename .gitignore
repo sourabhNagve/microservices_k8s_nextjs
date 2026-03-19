@@ -5,10 +5,20 @@ node_modules/
 # Environment variables
 .env
 .env.local
+.env.production
 .env.development.local
 .env.test.local
 .env.production.local
 */.env
+
+# Service-specific environment files (never commit these)
+auth-service/.env.local
+cart-service/.env.local
+inventory-service/.env.local
+order-service/.env.local
+product-service/.env.local
+payment-service/.env.local
+notification-service/.env.local
 
 # Build outputs
 build/

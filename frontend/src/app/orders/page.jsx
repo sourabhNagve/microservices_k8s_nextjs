@@ -13,12 +13,12 @@ import { useAuth } from '@/components/AuthProvider';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  pending:    { label: 'Pending',    icon: Clock,         color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-950' },
-  processing: { label: 'Processing', icon: Loader2,       color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-50 dark:bg-blue-950',    spin: true },
-  shipped:    { label: 'Shipped',    icon: Truck,         color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950' },
-  delivered:  { label: 'Delivered',  icon: CheckCircle2,  color: 'text-green-600 dark:text-green-400',  bg: 'bg-green-50 dark:bg-green-950' },
-  cancelled:  { label: 'Cancelled',  icon: XCircle,       color: 'text-red-600 dark:text-red-400',      bg: 'bg-red-50 dark:bg-red-950' },
-  refunded:   { label: 'Refunded',   icon: RotateCcw,     color: 'text-gray-600 dark:text-gray-400',    bg: 'bg-gray-100 dark:bg-gray-800' },
+  pending:    { label: 'Pending',    icon: Clock,        color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-950' },
+  processing: { label: 'Processing', icon: Loader2,      color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-50 dark:bg-blue-950',    spin: true },
+  shipped:    { label: 'Shipped',    icon: Truck,        color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950' },
+  delivered:  { label: 'Delivered',  icon: CheckCircle2, color: 'text-green-600 dark:text-green-400',  bg: 'bg-green-50 dark:bg-green-950' },
+  cancelled:  { label: 'Cancelled',  icon: XCircle,      color: 'text-red-600 dark:text-red-400',      bg: 'bg-red-50 dark:bg-red-950' },
+  refunded:   { label: 'Refunded',   icon: RotateCcw,    color: 'text-gray-600 dark:text-gray-400',    bg: 'bg-gray-100 dark:bg-gray-800' },
 };
 const DEFAULT_STATUS = STATUS_CONFIG.pending;
 
@@ -42,10 +42,11 @@ const fmt = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function OrdersPage() {
   const { user, loading: authLoading } = useAuth();
-  const { orders, loading, error, fetchOrders, cancelOrder, clearError } = useOrder();
+  // ✅ also destructure total from context
+  const { orders, total, loading, error, fetchOrders, cancelOrder, clearError } = useOrder();
   const router = useRouter();
 
-  const [filters, setFilters] = useState({ status: '', page: 1, limit: 10 });
+  const [filters,      setFilters]      = useState({ status: '', page: 1, limit: 10 });
   const [cancellingId, setCancellingId] = useState(null);
 
   // ── Auth redirect ────────────────────────────────────────────────────────
@@ -56,8 +57,6 @@ export default function OrdersPage() {
   }, [authLoading, user, router]);
 
   // ── Fetch on filter / user change ────────────────────────────────────────
-  // fetchOrders already throttles internally (OrderContext) — no need to
-  // duplicate throttle logic here with window._ordersPageCache
   useEffect(() => {
     if (!user?.id) return;
     fetchOrders(user.id, filters.page, filters.limit, filters.status || null);
@@ -67,8 +66,7 @@ export default function OrdersPage() {
   const handleFilterChange = useCallback((key, value) => {
     setFilters((prev) => ({
       ...prev,
-      [key]:  value,
-      // Reset page when changing status or limit — not when changing page itself
+      [key]: value,
       ...(key !== 'page' ? { page: 1 } : {}),
     }));
   }, []);
@@ -84,9 +82,9 @@ export default function OrdersPage() {
     }
   }, [cancelOrder]);
 
-  // ── Pagination — derived from server total if available, else local ───────
-  // The server should return total count; fall back to local length
-  const totalPages = Math.max(1, Math.ceil((orders._total ?? orders.length) / filters.limit));
+  // ── Pagination ────────────────────────────────────────────────────────────
+  // ✅ use total from context (server count) instead of orders._total which doesn't exist
+  const totalPages = Math.max(1, Math.ceil((total || orders.length) / filters.limit));
   const hasNext    = filters.page < totalPages;
   const hasPrev    = filters.page > 1;
 
@@ -158,7 +156,7 @@ export default function OrdersPage() {
             className="flex items-center gap-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl mb-6"
           >
             <AlertCircle className="w-5 h-5 shrink-0" aria-hidden="true" />
-            <span className="text-sm flex-1">{error}</span>
+            <span className="flex-1 text-sm">{error}</span>
             <button
               onClick={clearError}
               className="text-red-500 hover:text-red-700 dark:hover:text-red-300 text-xs underline"
@@ -222,7 +220,7 @@ export default function OrdersPage() {
                     <StatusBadge status={order.status} />
                   </div>
 
-                  {/* Items preview — max 3, then "+N more" */}
+                  {/* Items preview */}
                   <div className="space-y-3 mb-5">
                     {(order.items ?? []).slice(0, 3).map((item, i) => (
                       <div key={item.id ?? i} className="flex items-center gap-3">
