@@ -167,8 +167,9 @@ class Payment {
   }
 
   static async updateStatus(paymentId, status, additionalData = {}) {
+    // $1 is always paymentId (used in WHERE). Field values start at $2.
+    const values = [paymentId, status];
     const fields = ['status'];
-    const values = [status];
 
     if (status === 'completed' && additionalData.processedAt) {
       fields.push('processed_at');
@@ -182,12 +183,10 @@ class Payment {
 
     const updateQuery = `
       UPDATE payments
-      SET ${fields.map((field, index) => `${field} = $${index + 1}`).join(', ')}, updated_at = CURRENT_TIMESTAMP
+      SET ${fields.map((field, index) => `${field} = $${index + 2}`).join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `;
-
-    values.unshift(paymentId);
 
     try {
       const result = await query(updateQuery, values);
@@ -292,14 +291,18 @@ class Payment {
 
   static generateSignature(payload, secret) {
     return crypto
-      .createHmac('sha256', JSON.stringify(payload))
-      .update(secret)
+      .createHmac('sha256', secret)
+      .update(JSON.stringify(payload))
       .digest('hex');
   }
 
   static verifyWebhookSignature(payload, signature, secret) {
     const expectedSignature = this.generateSignature(payload, secret);
-    return crypto.timingSafeEqual(signature, expectedSignature);
+    // timingSafeEqual requires equal-length Buffers
+    const a = Buffer.from(signature, 'hex');
+    const b = Buffer.from(expectedSignature, 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
   }
 }
 

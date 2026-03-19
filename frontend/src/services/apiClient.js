@@ -46,7 +46,7 @@ class ApiClient {
       ...(method !== 'GET' && { body: JSON.stringify(data) }),
       ...(token && { headers: { 'Authorization': `Bearer ${token}` } }),
     };
-    return this.request('userService', `/api/auth${endpoint}`, options);
+    return this.request('authService', `/api/auth${endpoint}`, options);
   }
 
   async user(endpoint, data = {}, method = 'GET', token = null) {
@@ -55,7 +55,7 @@ class ApiClient {
       ...(method !== 'GET' && { body: JSON.stringify(data) }),
       ...(token && { headers: { 'Authorization': `Bearer ${token}` } }),
     };
-    return this.request('userService', `/api/users${endpoint}`, options);
+    return this.request('authService', `/api/users${endpoint}`, options);
   }
 }
 
