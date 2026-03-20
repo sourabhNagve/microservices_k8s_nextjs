@@ -60,17 +60,11 @@ const authenticate = (req, res, next) => {
 };
 
 // ─── Admin middleware ─────────────────────────────────────────────────────────
-const requireAdmin = async (req, res, next) => {
-  try {
-    const currentUser = await User.findById(req.user.userId);
-    if (!currentUser || !currentUser.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    req.currentUser = currentUser;
-    next();
-  } catch (error) {
-    next(error);
+const requireAdmin = (req, res, next) => {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
   }
+  next();
 };
 
 // ─── Register ─────────────────────────────────────────────────────────────────
@@ -140,7 +134,7 @@ router.post('/login', authLimiter, async (req, res) => {
     const { password: _pw, ...safeUser } = user;
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email, isAdmin: user.isAdmin ?? user.is_admin ?? false, },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -154,7 +148,7 @@ router.post('/login', authLimiter, async (req, res) => {
         email: safeUser.email,
         avatar: safeUser.avatar,
         verified: safeUser.verified,
-        isAdmin:  safeUser.isAdmin ?? safeUser.is_admin ?? false, // ✅ add fallback
+        isAdmin: safeUser.isAdmin ?? safeUser.is_admin ?? false, // ✅ add fallback
       },
     });
   } catch (error) {
@@ -202,7 +196,7 @@ router.post('/google', authLimiter, async (req, res) => {
     await User.updateLastLogin(user.id);
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email,  isAdmin: user.isAdmin ?? user.is_admin ?? false, },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -216,7 +210,7 @@ router.post('/google', authLimiter, async (req, res) => {
         email: user.email,
         avatar: user.avatar || googleUser.picture,
         verified: user.verified,
-        isAdmin:  user.isAdmin ?? user.is_admin ?? false,
+        isAdmin: user.isAdmin ?? user.is_admin ?? false,
       },
     });
   } catch (error) {
@@ -240,7 +234,7 @@ router.get('/profile', authenticate, async (req, res) => {
         emailVerified: user.verified,
         preferences: user.preferences,
         createdAt: user.createdAt,
-        isAdmin:  user.isAdmin ?? user.is_admin ?? false,
+        isAdmin: user.isAdmin ?? user.is_admin ?? false,
       },
     });
   } catch (error) {
@@ -280,7 +274,7 @@ router.put('/password', authenticate, async (req, res) => {
       });
     }
 
-    const { currentPassword, newPassword } = req.body;
+    const { currentPassword, newPassword} = req.body;
     await User.changePassword(req.user.userId, currentPassword, newPassword);
     res.json({ message: 'Password changed successfully' });
   } catch (error) {

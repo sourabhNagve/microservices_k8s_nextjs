@@ -1,7 +1,6 @@
 // Product service integration utilities
 
 const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3003';
-console.log('PRODUCT_SERVICE_URL:', PRODUCT_SERVICE_URL); // ✅ add this
 // Validate if product exists and is active
 export const validateProduct = async (productId) => {
   try {

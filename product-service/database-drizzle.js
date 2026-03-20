@@ -62,8 +62,14 @@ export const initTables = async () => {
   }
 };
 
-process.on('SIGINT', async () => {
+// process.on('SIGINT', async () => {
+//   await pool.end();
+//   console.log('PostgreSQL pool closed');
+//   process.exit(0);
+// });
+async function gracefulShutdown() {
   await pool.end();
-  console.log('PostgreSQL pool closed');
   process.exit(0);
-});
+}
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT',  gracefulShutdown);

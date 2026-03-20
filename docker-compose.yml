@@ -168,6 +168,8 @@ services:
       - /app/node_modules
     networks:
       - microservices-network
+    depends_on:
+      - redis
 
   # Notification Service
   notification-service:

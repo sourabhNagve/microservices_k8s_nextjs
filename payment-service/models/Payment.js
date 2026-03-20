@@ -167,6 +167,7 @@ class Payment {
   }
 
   static async updateStatus(paymentId, status, additionalData = {}) {
+
     const fields = ['status'];
     const values = [status];
 
@@ -292,14 +293,16 @@ class Payment {
 
   static generateSignature(payload, secret) {
     return crypto
-      .createHmac('sha256', JSON.stringify(payload))
-      .update(secret)
+      .createHmac('sha256', secret)                    // secret is the key
+      .update(JSON.stringify(payload))                 // payload is the data
       .digest('hex');
   }
-
   static verifyWebhookSignature(payload, signature, secret) {
-    const expectedSignature = this.generateSignature(payload, secret);
-    return crypto.timingSafeEqual(signature, expectedSignature);
+    const expected = this.generateSignature(payload, secret);
+    const expectedBuf = Buffer.from(expected, 'hex');
+    const signatureBuf = Buffer.from(signature, 'hex');
+    if (expectedBuf.length !== signatureBuf.length) return false;  // timingSafeEqual requires equal length
+    return crypto.timingSafeEqual(expectedBuf, signatureBuf);
   }
 }
 

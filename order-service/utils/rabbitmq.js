@@ -46,7 +46,7 @@ const publishToQueue = async (queueName, message) => {
     const sent = channel.sendToQueue(queueName, messageBuffer, { persistent: true });
     
     if (sent) {
-      console.log(`✅ Message sent to queue ${queueName}:`, message);
+      console.log(`✅ Message sent to queue ${queueName}, orderId: ${message.orderId}`);
     } else {
       console.log(`⚠️ Message not sent to queue ${queueName}`);
     }
