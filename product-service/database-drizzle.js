@@ -7,7 +7,7 @@ dotenv.config();
 
 const pool = new Pool({
   connectionString: process.env.PRODUCT_DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 15000,
@@ -62,13 +62,10 @@ export const initTables = async () => {
   }
 };
 
-// process.on('SIGINT', async () => {
-//   await pool.end();
-//   console.log('PostgreSQL pool closed');
-//   process.exit(0);
-// });
 async function gracefulShutdown() {
+  console.log('Shutting down gracefully...');
   await pool.end();
+  console.log('PostgreSQL pool closed');
   process.exit(0);
 }
 process.on('SIGTERM', gracefulShutdown);

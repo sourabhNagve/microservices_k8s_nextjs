@@ -15,7 +15,7 @@ class Order {
     } = orderData;
 
     // Generate order number
-    const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const orderNumber = `ORD-${Date.now()}-${uuidv4().slice(0, 8)}`;
 
     // Calculate totals
     const subtotal = items.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
