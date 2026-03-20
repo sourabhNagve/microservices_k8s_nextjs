@@ -7,7 +7,10 @@ import { Pool } from 'pg';
 dotenv.config();
 
 // Database connection
-const connectionString = process.env.ORDER_DATABASE_URL || process.env.DATABASE_URL || 'postgres://postgres:password123@postgres:5432/order-service';
+const connectionString = process.env.ORDER_DATABASE_URL || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('ORDER_DATABASE_URL or DATABASE_URL environment variable must be set');
+}
 
 // Aiven database SSL configuration
 const sslConfig = {

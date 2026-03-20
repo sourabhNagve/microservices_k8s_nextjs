@@ -33,6 +33,7 @@ out/
 *.sqlite
 *.sqlite3
 dump.rdb
+*.rdb
 erl_crash.dump
 
 # Logs

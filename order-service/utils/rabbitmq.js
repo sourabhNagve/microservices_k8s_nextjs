@@ -5,8 +5,11 @@ let channel = null;
 
 const connectRabbitMQ = async () => {
   try {
-    const rabbitmqUrl = process.env.RABBITMQ_URL || 'amqp://admin:admin123@localhost:5672/';
-    console.log('🔗 Attempting to connect to RabbitMQ at:', rabbitmqUrl.replace(/password=[^&]+/, 'password=***'));
+    const rabbitmqUrl = process.env.RABBITMQ_URL;
+    if (!rabbitmqUrl) {
+      throw new Error('RABBITMQ_URL environment variable must be set');
+    }
+    console.log('🔗 Attempting to connect to RabbitMQ...');
     
     if (!connection) {
       connection = await amqp.connect(rabbitmqUrl);

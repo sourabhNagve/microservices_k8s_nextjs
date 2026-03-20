@@ -10,7 +10,10 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Database connection
-const connectionString = process.env.PAYMENT_DATABASE_URL || process.env.DATABASE_URL || 'postgres://postgres:password123@postgres:5432/payment-service';
+const connectionString = process.env.PAYMENT_DATABASE_URL || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('PAYMENT_DATABASE_URL or DATABASE_URL environment variable must be set');
+}
 
 // Aiven database SSL configuration
 const sslConfig = {
