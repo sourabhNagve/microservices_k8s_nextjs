@@ -1,17 +1,21 @@
 import amqp from 'amqplib';
 
 let connection = null;
-let channel    = null;
+let channel = null;
 
 export const connectRabbitMQ = async () => {
-  const url = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672/';
+  const url = process.env.RABBITMQ_URL;
+  if (!url) {
+    throw new Error('RABBITMQ_URL environment variable must be set');
+  }
   connection = await amqp.connect(url);
-  channel    = await connection.createChannel();
 
-  await channel.assertQueue('order.created',  { durable: true });
-  await channel.assertQueue('order.shipped',  { durable: true });
-  await channel.assertQueue('order.delivered',{ durable: true });
-  await channel.assertQueue('order.cancelled',{ durable: true });
+  channel = await connection.createChannel();
+
+  await channel.assertQueue('order.created', { durable: true });
+  await channel.assertQueue('order.shipped', { durable: true });
+  await channel.assertQueue('order.delivered', { durable: true });
+  await channel.assertQueue('order.cancelled', { durable: true });
 
   console.log('✅ Notification service connected to RabbitMQ');
   return { connection, channel };
@@ -36,5 +40,5 @@ export const consumeFromQueue = async (queueName, callback) => {
   console.log(`✅ Consuming from queue: ${queueName}`);
 };
 
-process.on('SIGINT',  async () => { await channel?.close(); await connection?.close(); process.exit(0); });
+process.on('SIGINT', async () => { await channel?.close(); await connection?.close(); process.exit(0); });
 process.on('SIGTERM', async () => { await channel?.close(); await connection?.close(); process.exit(0); });

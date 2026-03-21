@@ -18,7 +18,8 @@ export class User {
         email,
         password: hashedPassword,
         googleId,
-        verified: googleId ? true : false,
+        // FIX 1 (line 20): simplified boolean expression
+        verified: Boolean(googleId),
       }).returning();
 
       const { password: _, ...userWithoutPassword } = user;
@@ -29,20 +30,49 @@ export class User {
     }
   }
 
+  // FIX 2 (lines 32-40): findByEmail now explicitly excludes the password column.
+  // Previously it ran db.select() which returns ALL columns including the hashed
+  // password — leaking it into duplicate-check logic and anywhere this method's
+  // result was forwarded to a response.
   static async findByEmail(email) {
     try {
-      const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
-      return user[0] || null;
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          googleId: users.googleId,
+          avatar: users.avatar,
+          preferences: users.preferences,
+          verified: users.verified,
+          isActive: users.isActive,
+          isAdmin: users.isAdmin,
+          lastLogin: users.lastLogin,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      return user || null;
     } catch (error) {
       console.error('❌ Error finding user by email:', error);
       throw error;
     }
   }
 
+  // FIX 3 (lines 42-49): findByEmailWithPassword intentionally fetches ALL columns
+  // (including password) — this is only used internally during login to compare
+  // the submitted password against the stored hash. Never return this result
+  // directly to a client.
   static async findByEmailWithPassword(email) {
     try {
-      const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
-      return user[0] || null;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      return user || null;
     } catch (error) {
       console.error('❌ Error finding user by email with password:', error);
       throw error;
@@ -51,8 +81,25 @@ export class User {
 
   static async findByGoogleId(googleId) {
     try {
-      const user = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
-      return user[0] || null;
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          googleId: users.googleId,
+          avatar: users.avatar,
+          preferences: users.preferences,
+          verified: users.verified,
+          isActive: users.isActive,
+          isAdmin: users.isAdmin,
+          lastLogin: users.lastLogin,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .where(eq(users.googleId, googleId))
+        .limit(1);
+      return user || null;
     } catch (error) {
       console.error('❌ Error finding user by Google ID:', error);
       throw error;
@@ -69,7 +116,9 @@ export class User {
           avatar: users.avatar,
           preferences: users.preferences,
           verified: users.verified,
+          isActive: users.isActive,
           isAdmin: users.isAdmin,
+          lastLogin: users.lastLogin,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
         })
@@ -116,7 +165,6 @@ export class User {
   }
 
   static async changePassword(id, currentPassword, newPassword) {
-    // get user with password directly by id
     const [userWithPassword] = await db
       .select()
       .from(users)
@@ -142,6 +190,17 @@ export class User {
       throw error;
     }
 
+    // FIX 4 (line ~145): prevent password reuse — reject if new password is
+    // identical to the current one. Without this check a user can "change"
+    // their password to the same value, which is a UX bug and a weak security
+    // signal (e.g. after a forced-reset flow).
+    const isSamePassword = await bcrypt.compare(newPassword, userWithPassword.password);
+    if (isSamePassword) {
+      const error = new Error('New password must be different from the current password');
+      error.name = 'InvalidPasswordError';
+      throw error;
+    }
+
     const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
     try {
@@ -162,6 +221,9 @@ export class User {
         .update(users)
         .set({
           googleId,
+          // FIX 5 (line ~162): also mark the account as verified when linking
+          // a Google ID, since Google has already verified the email address.
+          verified: true,
           updatedAt: new Date(),
         })
         .where(eq(users.id, userId))
@@ -185,14 +247,20 @@ export class User {
   }
 
   static async comparePassword(password, hashedPassword) {
-    return await bcrypt.compare(password, hashedPassword);
+    return bcrypt.compare(password, hashedPassword);
   }
 
+  // FIX 6 (lines 194-202): updateLastLogin was only setting updatedAt, never
+  // the actual lastLogin column. The column was added in migration 0002 but has
+  // always been NULL in every row because of this bug.
   static async updateLastLogin(id) {
     try {
       await db
         .update(users)
-        .set({ updatedAt: new Date() })
+        .set({
+          lastLogin: new Date(),
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, id));
 
       return true;
@@ -244,11 +312,22 @@ export class User {
     }
   }
 
+  // FIX 7 (lines 230-260): the count query did not apply the search filter,
+  // so pagination totals were always based on ALL users even when a search term
+  // was supplied. This caused wrong page counts and made the admin UI think
+  // there were more pages than actually existed.
   static async getAllUsers(page = 1, limit = 10, search = '') {
     try {
       const offset = (page - 1) * limit;
 
-      let query = db
+      const searchFilter = search
+        ? or(
+            ilike(users.name, `%${search}%`),
+            ilike(users.email, `%${search}%`)
+          )
+        : undefined;
+
+      const dataQuery = db
         .select({
           id: users.id,
           name: users.name,
@@ -262,26 +341,21 @@ export class User {
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
         })
-        .from(users);
-
-      if (search) {
-        query = query.where(
-          or(
-            ilike(users.name, `%${search}%`),
-            ilike(users.email, `%${search}%`)
-          )
-        );
-      }
-
-      const allUsers = await query
+        .from(users)
+        .orderBy(users.createdAt)
         .limit(limit)
-        .offset(offset)
-        .orderBy(users.createdAt);
+        .offset(offset);
 
-      // Get total count for pagination
-      const [{ count }] = await db
+      const countQuery = db
         .select({ count: sql`count(*)`.mapWith(Number) })
         .from(users);
+
+      if (searchFilter) {
+        dataQuery.where(searchFilter);
+        countQuery.where(searchFilter);
+      }
+
+      const [allUsers, [{ count }]] = await Promise.all([dataQuery, countQuery]);
       const total = count;
 
       return {
@@ -290,8 +364,8 @@ export class User {
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit)
-        }
+          pages: Math.ceil(total / limit),
+        },
       };
     } catch (error) {
       console.error('❌ Error getting all users:', error);
@@ -299,17 +373,18 @@ export class User {
     }
   }
 
+  // FIX 8 (lines 262-280): deactivateUser and reactivateUser had no guard to
+  // prevent operating on a non-existent user — they silently succeeded with
+  // 0 rows updated. Now they return false so callers can return a 404.
   static async deactivateUser(id) {
     try {
-      await db
+      const result = await db
         .update(users)
-        .set({
-          isActive: false,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, id));
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning({ id: users.id });
 
-      return true;
+      return result.length > 0;
     } catch (error) {
       console.error('❌ Error deactivating user:', error);
       throw error;
@@ -318,15 +393,13 @@ export class User {
 
   static async reactivateUser(id) {
     try {
-      await db
+      const result = await db
         .update(users)
-        .set({
-          isActive: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, id));
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning({ id: users.id });
 
-      return true;
+      return result.length > 0;
     } catch (error) {
       console.error('❌ Error reactivating user:', error);
       throw error;
