@@ -4,30 +4,45 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// ─── Connection setup ─────────────────────────────────────────────────────────
+const connectionString = process.env.NOTIFICATION_DATABASE_URL;
+if (!connectionString) {
+  console.error('❌ NOTIFICATION_DATABASE_URL environment variable must be set');
+  process.exit(1);
+}
+
 const pool = new Pool({
-  connectionString: process.env.NOTIFICATION_DATABASE_URL || 'postgresql://postgres:password123@postgres:5432/notification-service',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString,
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: true }
+    : false,
+});
+
+// Catch pool-level errors so they don't crash the process as unhandled events.
+pool.on('error', (err) => {
+  console.error('❌ Unexpected PostgreSQL pool error:', err.message);
 });
 
 const connectDB = async () => {
   try {
-    // Test the connection
+    console.log('🔄 Attempting to connect to database...');
     const client = await pool.connect();
-    await client.query('SELECT NOW()');
+    const { rows } = await client.query('SELECT NOW() AS now');
     client.release();
-    
+
     console.log('✅ PostgreSQL Connected Successfully');
+    console.log(`📅 Server time: ${rows[0].now}`);
     return pool;
   } catch (error) {
-    console.error('❌ Database connection error:', error);
+    console.error('❌ Database connection error:', error.message);
     process.exit(1);
   }
 };
 
-// Initialize database tables
+// Initialize database tables (uses dynamic import to avoid require() in ESM)
 const initTables = async () => {
   try {
-    const { Notification } = require('../models/Notification');
+    const { Notification } = await import('../models/Notification.js');
     await Notification.createTable();
     await Notification.createTemplatesTable();
     console.log('✅ Notification service tables initialized');
@@ -40,27 +55,18 @@ const initTables = async () => {
 // Helper function to execute queries
 const query = async (text, params) => {
   const start = Date.now();
-  const client = await pool.connect();
-  
   try {
-    const result = await client.query(text, params);
+    const result = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: result.rowCount });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Executed query', { duration, rows: result.rowCount });
+    }
     return result;
   } catch (error) {
-    console.error('Query error:', error);
+    console.error('Query error:', error.message);
     throw error;
-  } finally {
-    client.release();
   }
 };
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await pool.end();
-  console.log('PostgreSQL connection closed through app termination');
-  process.exit(0);
-});
 
 export { 
   connectDB, 

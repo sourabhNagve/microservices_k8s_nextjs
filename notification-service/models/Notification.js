@@ -255,4 +255,4 @@ class Notification {
   }
 }
 
-module.exports = Notification;
+export { Notification };
