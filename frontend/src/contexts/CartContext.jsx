@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/components/AuthProvider'; // ✅ use context, not lib/auth directly
+import { getToken } from '@/lib/auth';               // ✅ needed for Authorization header
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // ✅ env var instead of hardcoded URL
@@ -20,9 +21,14 @@ export const useCart = () => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const apiFetch = async (url, options = {}) => {
+  const token = getToken();
   const res = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
   });
 
   let body;
@@ -178,9 +184,9 @@ export const CartProvider = ({ children }) => {
     });
 
     try {
-      await apiFetch(`${API_BASE}/api/cart/remove`, {
+      // Cart-service uses DELETE /:userId/:productId (path params, no body)
+      await apiFetch(`${API_BASE}/api/cart/${userId}/${productId}`, {
         method: 'DELETE',
-        body: JSON.stringify({ userId: parseInt(userId), productId }),
       });
       return { success: true };
     } catch (err) {

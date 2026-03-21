@@ -7,7 +7,7 @@ class Notification {
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS notifications (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES users(id),
+        user_id UUID NOT NULL,
         type VARCHAR(50) NOT NULL CHECK (type IN ('info', 'success', 'warning', 'error', 'order', 'payment', 'shipping', 'promotion')),
         title VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
@@ -109,6 +109,13 @@ class Notification {
       whereClause += ' AND n.is_read = FALSE';
     }
 
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as count
+      FROM notifications n
+      ${whereClause}
+    `;
+
     const selectQuery = `
       SELECT n.*
       FROM notifications n
@@ -117,11 +124,14 @@ class Notification {
       LIMIT $2 OFFSET $3
     `;
 
-    queryParams.push(limit, offset);
-
     try {
+      const countResult = await query(countQuery, [...queryParams]);
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      queryParams.push(limit, offset);
       const result = await query(selectQuery, queryParams);
-      return result.rows;
+
+      return { rows: result.rows, total };
     } catch (error) {
       console.error('❌ Error finding notifications by user:', error);
       throw error;
@@ -255,4 +265,4 @@ class Notification {
   }
 }
 
-module.exports = Notification;
+export { Notification };

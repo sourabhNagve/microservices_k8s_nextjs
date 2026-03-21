@@ -1,27 +1,61 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { Notification } from '../models/Notification.js';
 import { validateNotification, validateNotificationTemplate } from '../utils/validation.js';
+
 const router = express.Router();
 
-// Get notifications by user
-router.get('/user/:userId', async (req, res) => {
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : null;
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+const requireAdmin = (req, res, next) => {
+  if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin access required' });
+  next();
+};
+
+// ─── GET /user/:userId — get notifications by user ───────────────────────────
+router.get('/user/:userId', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // Ownership check: users can only read their own notifications
+    if (req.user.userId !== userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
+
+    // Clamp pagination parameters to prevent abuse (e.g. ?limit=999999)
+    const clampedPage  = Math.max(parseInt(page,  10) || 1, 1);
+    const clampedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     
-    const notifications = await Notification.findByUserId(
+    const { rows: notifications, total } = await Notification.findByUserId(
       userId, 
-      parseInt(page), 
-      parseInt(limit), 
+      clampedPage, 
+      clampedLimit, 
       unreadOnly === 'true'
     );
+
+    const totalPages = Math.max(1, Math.ceil(total / clampedLimit));
     
     res.json({
       notifications,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(notifications.length / parseInt(limit))
+        page: clampedPage,
+        limit: clampedLimit,
+        total,
+        totalPages
       }
     });
   } catch (error) {
@@ -33,10 +67,14 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
-// Get unread count
-router.get('/user/:userId/unread-count', async (req, res) => {
+// ─── GET /user/:userId/unread-count ──────────────────────────────────────────
+router.get('/user/:userId/unread-count', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
+
+    if (req.user.userId !== userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     
     const count = await Notification.getUnreadCount(userId);
     
@@ -53,8 +91,10 @@ router.get('/user/:userId/unread-count', async (req, res) => {
   }
 });
 
-// Get notification by ID
-router.get('/:notificationId', async (req, res) => {
+// ─── GET /:notificationId — get notification by ID ───────────────────────────
+// FIX: added ownership check — without it any authenticated user could read any
+// notification by guessing its UUID.
+router.get('/:notificationId', authenticate, async (req, res) => {
   try {
     const { notificationId } = req.params;
     
@@ -64,6 +104,11 @@ router.get('/:notificationId', async (req, res) => {
       return res.status(404).json({ 
         error: 'Notification not found' 
       });
+    }
+
+    // Ownership check: only the notification owner or an admin may view it
+    if (req.user.userId !== notification.user_id && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     res.json({ notification });
@@ -76,10 +121,10 @@ router.get('/:notificationId', async (req, res) => {
   }
 });
 
-// Create new notification
-router.post('/', async (req, res) => {
+// ─── POST / — create new notification (admin only) ──────────────────────────
+router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { error } = validateNotification(req.body);
+    const { error, value } = validateNotification(req.body);
     if (error) {
       return res.status(400).json({ 
         error: 'Validation failed', 
@@ -87,7 +132,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const notification = await Notification.create(req.body);
+    const notification = await Notification.create(value);
     
     res.status(201).json({
       message: 'Notification created successfully',
@@ -102,17 +147,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Mark notification as read
-router.patch('/:notificationId/read', async (req, res) => {
+// ─── PATCH /:notificationId/read — mark notification as read ─────────────────
+router.patch('/:notificationId/read', authenticate, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    const { userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ 
-        error: 'User ID is required' 
-      });
-    }
+    const userId = req.user.userId;
 
     const notification = await Notification.markAsRead(notificationId, userId);
     
@@ -135,10 +174,14 @@ router.patch('/:notificationId/read', async (req, res) => {
   }
 });
 
-// Mark all notifications as read
-router.patch('/user/:userId/read-all', async (req, res) => {
+// ─── PATCH /user/:userId/read-all — mark all notifications as read ──────────
+router.patch('/user/:userId/read-all', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
+
+    if (req.user.userId !== userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     
     await Notification.markAllAsRead(userId);
     
@@ -154,17 +197,11 @@ router.patch('/user/:userId/read-all', async (req, res) => {
   }
 });
 
-// Delete notification
-router.delete('/:notificationId', async (req, res) => {
+// ─── DELETE /:notificationId — delete notification ───────────────────────────
+router.delete('/:notificationId', authenticate, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ 
-        error: 'User ID is required' 
-      });
-    }
+    const userId = req.user.userId;
 
     const notification = await Notification.delete(notificationId, userId);
     
@@ -187,10 +224,10 @@ router.delete('/:notificationId', async (req, res) => {
   }
 });
 
-// Create notification template
-router.post('/templates', async (req, res) => {
+// ─── POST /templates — create notification template (admin only) ─────────────
+router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { error } = validateNotificationTemplate(req.body);
+    const { error, value } = validateNotificationTemplate(req.body);
     if (error) {
       return res.status(400).json({ 
         error: 'Validation failed', 
@@ -198,7 +235,7 @@ router.post('/templates', async (req, res) => {
       });
     }
 
-    const template = await Notification.createTemplate(req.body);
+    const template = await Notification.createTemplate(value);
     
     res.status(201).json({
       message: 'Notification template created successfully',
@@ -213,8 +250,8 @@ router.post('/templates', async (req, res) => {
   }
 });
 
-// Get notification template
-router.get('/templates/:name', async (req, res) => {
+// ─── GET /templates/:name — get notification template (admin only) ───────────
+router.get('/templates/:name', authenticate, requireAdmin, async (req, res) => {
   try {
     const { name } = req.params;
     
@@ -236,4 +273,4 @@ router.get('/templates/:name', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

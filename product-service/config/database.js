@@ -4,9 +4,20 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// ─── Connection setup ─────────────────────────────────────────────────────────
+// NOTE: This file is legacy and not imported by the main product-service
+// (which uses database-drizzle.js instead). Kept for reference or manual use.
+const connectionString = process.env.PRODUCT_DATABASE_URL;
+if (!connectionString) {
+  console.error('❌ PRODUCT_DATABASE_URL environment variable must be set');
+  process.exit(1);
+}
+
 const pool = new Pool({
-  connectionString: process.env.PRODUCT_DATABASE_URL || 'postgresql://postgres:password123@postgres:5432/product-service',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString,
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: true }
+    : false,
 });
 
 const connectDB = async () => {
@@ -27,7 +38,7 @@ const connectDB = async () => {
 // Initialize database tables
 const initTables = async () => {
   try {
-    const { Product } = require('../models/Product');
+    const { Product } = await import('../models/Product.js');
     await Product.createTable();
     await Product.createCategoriesTable();
     console.log('✅ Product service tables initialized');
@@ -40,18 +51,16 @@ const initTables = async () => {
 // Helper function to execute queries
 const query = async (text, params) => {
   const start = Date.now();
-  const client = await pool.connect();
-  
   try {
-    const result = await client.query(text, params);
+    const result = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: result.rowCount });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Executed query', { duration, rows: result.rowCount });
+    }
     return result;
   } catch (error) {
     console.error('Query error:', error);
     throw error;
-  } finally {
-    client.release();
   }
 };
 
