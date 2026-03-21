@@ -109,6 +109,13 @@ class Notification {
       whereClause += ' AND n.is_read = FALSE';
     }
 
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as count
+      FROM notifications n
+      ${whereClause}
+    `;
+
     const selectQuery = `
       SELECT n.*
       FROM notifications n
@@ -117,11 +124,14 @@ class Notification {
       LIMIT $2 OFFSET $3
     `;
 
-    queryParams.push(limit, offset);
-
     try {
+      const countResult = await query(countQuery, [...queryParams]);
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      queryParams.push(limit, offset);
       const result = await query(selectQuery, queryParams);
-      return result.rows;
+
+      return { rows: result.rows, total };
     } catch (error) {
       console.error('❌ Error finding notifications by user:', error);
       throw error;

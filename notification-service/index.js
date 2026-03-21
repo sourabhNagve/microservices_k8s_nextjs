@@ -41,6 +41,15 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// ─── Health check (registered before rate limiter so probes are never throttled)
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    service: 'notification-service',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -54,15 +63,6 @@ app.use(limiter);
 // ─── Body parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    service: 'notification-service',
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/notifications', notificationRoutes);

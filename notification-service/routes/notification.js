@@ -40,19 +40,22 @@ router.get('/user/:userId', authenticate, async (req, res) => {
     const clampedPage  = Math.max(parseInt(page,  10) || 1, 1);
     const clampedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     
-    const notifications = await Notification.findByUserId(
+    const { rows: notifications, total } = await Notification.findByUserId(
       userId, 
       clampedPage, 
       clampedLimit, 
       unreadOnly === 'true'
     );
+
+    const totalPages = Math.max(1, Math.ceil(total / clampedLimit));
     
     res.json({
       notifications,
       pagination: {
         page: clampedPage,
         limit: clampedLimit,
-        totalPages: Math.ceil(notifications.length / clampedLimit)
+        total,
+        totalPages
       }
     });
   } catch (error) {
@@ -247,8 +250,8 @@ router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── GET /templates/:name — get notification template ────────────────────────
-router.get('/templates/:name', authenticate, async (req, res) => {
+// ─── GET /templates/:name — get notification template (admin only) ───────────
+router.get('/templates/:name', authenticate, requireAdmin, async (req, res) => {
   try {
     const { name } = req.params;
     
