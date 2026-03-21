@@ -35,20 +35,24 @@ router.get('/user/:userId', authenticate, async (req, res) => {
     }
 
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
+
+    // Clamp pagination parameters to prevent abuse (e.g. ?limit=999999)
+    const clampedPage  = Math.max(parseInt(page,  10) || 1, 1);
+    const clampedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     
     const notifications = await Notification.findByUserId(
       userId, 
-      parseInt(page), 
-      parseInt(limit), 
+      clampedPage, 
+      clampedLimit, 
       unreadOnly === 'true'
     );
     
     res.json({
       notifications,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(notifications.length / parseInt(limit))
+        page: clampedPage,
+        limit: clampedLimit,
+        totalPages: Math.ceil(notifications.length / clampedLimit)
       }
     });
   } catch (error) {
@@ -85,6 +89,8 @@ router.get('/user/:userId/unread-count', authenticate, async (req, res) => {
 });
 
 // ─── GET /:notificationId — get notification by ID ───────────────────────────
+// FIX: added ownership check — without it any authenticated user could read any
+// notification by guessing its UUID.
 router.get('/:notificationId', authenticate, async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -95,6 +101,11 @@ router.get('/:notificationId', authenticate, async (req, res) => {
       return res.status(404).json({ 
         error: 'Notification not found' 
       });
+    }
+
+    // Ownership check: only the notification owner or an admin may view it
+    if (req.user.userId !== notification.user_id && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     res.json({ notification });
