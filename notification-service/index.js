@@ -7,7 +7,7 @@ import rateLimit  from 'express-rate-limit';
 dotenv.config();
 
 // ─── Environment validation ───────────────────────────────────────────────────
-const requiredEnvVars = ['RABBITMQ_URL', 'NOTIFICATION_DATABASE_URL'];
+const requiredEnvVars = ['JWT_SECRET', 'RABBITMQ_URL', 'NOTIFICATION_DATABASE_URL'];
 for (const v of requiredEnvVars) {
   if (!process.env[v]) {
     console.error(`❌ Missing required environment variable: ${v}`);

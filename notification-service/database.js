@@ -42,7 +42,7 @@ const connectDB = async () => {
 // Initialize database tables (uses dynamic import to avoid require() in ESM)
 const initTables = async () => {
   try {
-    const { Notification } = await import('../models/Notification.js');
+    const { Notification } = await import('./models/Notification.js');
     await Notification.createTable();
     await Notification.createTemplatesTable();
     console.log('✅ Notification service tables initialized');
